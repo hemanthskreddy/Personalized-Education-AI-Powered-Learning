@@ -99,49 +99,72 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    const apiKey = process.env.HUGGINGFACE_API_KEY
+    const groqApiKey = process.env.GROQ_API_KEY
     const lowerMessage = message.toLowerCase()
 
     // Enhanced career guidance responses with user profile context
     let response = getPersonalizedCareerGuidance(lowerMessage, userProfile)
 
-    // Try to get AI response if API key is available
-    if (apiKey && apiKey !== 'your_huggingface_api_key_here') {
+    // Try to get AI response if Groq API key is available
+    if (groqApiKey && groqApiKey !== 'your_groq_api_key_here') {
       try {
         const contextPrompt = userProfile ? 
-          `You are an expert career counselor. User Profile: ${userProfile.name} has a ${userProfile.degree} degree, ${userProfile.experience} experience, and wants to become a ${userProfile.careerGoals}. User asks: ${message}. Provide detailed, personalized career guidance with specific steps and recommendations based on their background.` :
-          `You are an expert career counselor specializing in tech careers. A student asks: ${message}. Provide detailed, practical career guidance with specific steps and recommendations.`
+          `You are an expert career counselor specializing in tech careers and personalized education. 
 
-        const aiResponse = await fetch(
-          'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+User Profile:
+- Name: ${userProfile.name}
+- Degree: ${userProfile.degree}
+- Experience: ${userProfile.experience}
+- Career Goal: ${userProfile.careerGoals}
+
+User Question: ${message}
+
+Provide detailed, personalized career guidance with specific steps, skill recommendations, and actionable advice based on their background. Be encouraging, practical, and specific to their situation. Focus on how they can leverage their ${userProfile.degree} degree and ${userProfile.experience} experience to achieve their goal of becoming a ${userProfile.careerGoals}.
+
+Format your response in a clear, structured way with bullet points and specific recommendations.` :
+          `You are an expert career counselor specializing in tech careers and personalized education. A student asks: "${message}". 
+
+Provide detailed, practical career guidance with specific steps and recommendations. Be encouraging and focus on actionable advice for career development in technology fields.
+
+Format your response in a clear, structured way with bullet points and specific recommendations.`
+
+        const groqResponse = await fetch(
+          'https://api.groq.com/openai/v1/chat/completions',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`,
+              'Authorization': `Bearer ${groqApiKey}`,
             },
             body: JSON.stringify({
-              inputs: contextPrompt,
-              parameters: {
-                max_length: 300,
-                temperature: 0.7,
-                do_sample: true,
-                top_p: 0.9,
-              },
+              model: 'llama3-8b-8192',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are an expert career counselor specializing in tech careers and personalized education. Provide detailed, practical guidance with specific steps and actionable advice.'
+                },
+                {
+                  role: 'user',
+                  content: contextPrompt
+                }
+              ],
+              temperature: 0.7,
+              max_tokens: 800,
+              top_p: 0.9,
             }),
           }
         )
 
-        if (aiResponse.ok) {
-          const data = await aiResponse.json()
-          const generatedText = data[0]?.generated_text
+        if (groqResponse.ok) {
+          const data = await groqResponse.json()
+          const generatedText = data.choices?.[0]?.message?.content
           if (generatedText && generatedText.length > 20) {
             // Combine AI response with our structured guidance
             response = `${generatedText}\n\n${response}`
           }
         }
       } catch (error) {
-        console.error('Hugging Face API error:', error)
+        console.error('Groq API error:', error)
         // Continue with our structured response
       }
     }
